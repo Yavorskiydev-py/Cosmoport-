@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cosmoport — космопорт</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="stars stars--far"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__logo">🚀</span>
+      <div>
+        <div class="brand__name">Cosmoport</div>
+        <div class="brand__sub">сервис бронирования космических полётов</div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="flights">Полёты</button>
+      <button class="tab" data-tab="labs">Проверка ЛР</button>
+      <button class="tab" data-tab="monitoring">Мониторинг</button>
+    </nav>
+    <div class="health" id="health" title="Состояние сервиса api и базы данных">
+      <span class="dot"></span><span id="health-text">проверка…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ================= ПОЛЁТЫ ================= -->
+    <section class="page is-active" data-page="flights">
+      <div class="grid grid--flights">
+
+        <!-- авторизация -->
+        <div class="card" id="auth-card">
+          <h2 class="card__title"><span class="lab">ЛР3</span> Вход в космопорт</h2>
+
+          <div id="auth-forms">
+            <div class="segmented">
+              <button class="segmented__btn is-active" data-mode="login">Вход</button>
+              <button class="segmented__btn" data-mode="register">Регистрация</button>
+            </div>
+            <form id="auth-form" class="form" autocomplete="off">
+              <label>Логин
+                <input name="login" required minlength="3" maxlength="32" placeholder="gagarin" pattern="[a-zA-Z0-9_.\-]{3,32}">
+              </label>
+              <label>Пароль
+                <input name="password" type="password" required minlength="6" maxlength="72" placeholder="не короче 6 символов">
+              </label>
+              <button class="btn btn--primary" type="submit" id="auth-submit">Войти</button>
+              <p class="hint" id="auth-hint">Нет аккаунта? Переключись на «Регистрация».</p>
+            </form>
+          </div>
+
+          <div id="auth-user" hidden>
+            <div class="astronaut">
+              <div class="astronaut__avatar">👩‍🚀</div>
+              <div>
+                <div class="astronaut__name" id="user-login"></div>
+                <div class="muted">ID пользователя: <b id="user-id"></b> · токен до <span id="token-exp"></span></div>
+              </div>
+            </div>
+            <details class="token">
+              <summary>Показать JWT-токен</summary>
+              <code id="token-raw"></code>
+              <div class="token__claims" id="token-claims"></div>
+            </details>
+            <button class="btn btn--ghost" id="logout">Выйти</button>
+          </div>
+        </div>
+
+        <!-- схема -->
+        <div class="card card--diagram">
+          <h2 class="card__title">Как это работает</h2>
+          <div class="diagram" id="diagram">
+            <div class="node" data-node="browser">🧑‍💻<span>Браузер</span></div>
+            <div class="link" data-link="browser-api"><i></i></div>
+            <div class="node" data-node="api">🛰️<span>api</span></div>
+            <div class="link" data-link="api-mq"><i></i></div>
+            <div class="node" data-node="mq">📨<span>RabbitMQ</span></div>
+            <div class="link" data-link="mq-mc"><i></i></div>
+            <div class="node" data-node="mc">🎛️<span>ЦУП</span></div>
+            <div class="link link--down" data-link="api-db"><i></i></div>
+            <div class="node node--db" data-node="db">🗄️<span>PostgreSQL</span></div>
+          </div>
+          <p class="muted small" id="diagram-caption">Создай заявку: на схеме будет видно, как сообщение
+            уходит в ЦУП через RabbitMQ и как возвращаются статусы.</p>
+        </div>
+
+        <!-- каталог и бронирование -->
+        <div class="card card--wide">
+          <h2 class="card__title"><span class="lab">ЛР4</span> Куда летим?</h2>
+          <div class="destinations" id="destinations"></div>
+          <form class="booking" id="booking">
+            <div class="booking__summary" id="booking-summary">Выбери направление</div>
+            <label class="booking__pax">Пассажиров
+              <input type="number" id="passengers" min="1" max="10" value="1">
+            </label>
+            <button class="btn btn--primary btn--launch" type="submit" id="book-btn" disabled>🚀 Забронировать полёт</button>
+          </form>
+          <p class="hint" id="booking-hint">Чтобы бронировать, войди в систему. Запрос пойдёт с заголовком <code>Authorization: Bearer &lt;JWT&gt;</code> (ЛР5).</p>
+        </div>
+
+        <!-- мои заявки -->
+        <div class="card card--wide">
+          <div class="card__head">
+            <h2 class="card__title"><span class="lab">ЛР4</span><span class="lab">ЛР5</span> Мои заявки</h2>
+            <div class="counters" id="counters"></div>
+          </div>
+          <div id="orders" class="orders">
+            <div class="empty">Войди в систему, чтобы увидеть свои заявки.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ПРОВЕРКА ЛР ================= -->
+    <section class="page" data-page="labs">
+      <div class="grid grid--labs">
+        <div class="card">
+          <h2 class="card__title"><span class="lab">ЛР1</span> GET /test</h2>
+          <p class="muted">Запрос проходит все 3 слоя: <code>handler</code> → <code>service</code> → <code>repository</code>.</p>
+          <div class="layers">
+            <div class="layer" data-layer="handler">handler<small>internal/api/handler</small></div>
+            <div class="layer" data-layer="service">service<small>internal/api/service</small></div>
+            <div class="layer" data-layer="repository">repository<small>internal/api/repository</small></div>
+          </div>
+          <button class="btn btn--primary" id="btn-test">Отправить GET /test</button>
+          <div class="result" id="test-result"></div>
+        </div>
+
+        <div class="card">
+          <h2 class="card__title"><span class="lab">ЛР2</span> POST /dbtest</h2>
+          <p class="muted">Строка из тела запроса записывается в таблицу <code>test_messages</code> в PostgreSQL.</p>
+          <form class="inline-form" id="dbtest-form">
+            <input id="dbtest-text" placeholder="Поехали!" maxlength="1000" required>
+            <button class="btn btn--primary" type="submit">Записать в БД</button>
+          </form>
+          <h3 class="subtitle">Последние записи (GET /dbtest)</h3>
+          <ul class="messages" id="messages"></ul>
+        </div>
+
+        <div class="card">
+          <h2 class="card__title"><span class="lab">ЛР5</span> Защита без токена</h2>
+          <p class="muted">Middleware не пускает к заявкам без JWT или с поддельным токеном.</p>
+          <div class="btn-row">
+            <button class="btn btn--ghost" data-probe="none">GET /orders без токена</button>
+            <button class="btn btn--ghost" data-probe="fake">GET /orders с поддельным токеном</button>
+            <button class="btn btn--ghost" data-probe="real">GET /orders с моим токеном</button>
+          </div>
+          <div class="result" id="probe-result"></div>
+        </div>
+
+        <div class="card">
+          <h2 class="card__title">Graceful shutdown</h2>
+          <p class="muted">Выполни в терминале и посмотри логи: сервер дожидается текущих запросов и закрывает соединения.</p>
+          <pre class="cmd">docker compose stop api
+docker compose logs api | tail -8
+docker compose start api</pre>
+          <p class="muted">Индикатор в правом верхнем углу покажет, что api недоступен, а потом снова в строю.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= МОНИТОРИНГ ================= -->
+    <section class="page" data-page="monitoring">
+      <div class="card">
+        <div class="card__head">
+          <h2 class="card__title">Мониторинг в реальном времени</h2>
+          <div class="btn-row" id="tool-links"></div>
+        </div>
+        <p class="muted">Графики встроены из Grafana и обновляются каждые 5 секунд. Чтобы они ожили, запусти нагрузку:
+          <code>docker compose --profile load up -d loadgen</code></p>
+        <div class="panels" id="panels"></div>
+      </div>
+    </section>
+
+    <!-- консоль запросов -->
+    <aside class="console" id="console">
+      <div class="console__head">
+        <span>📡 Консоль запросов к API</span>
+        <label class="muted small"><input type="checkbox" id="show-polling"> показывать автообновление</label>
+        <button class="btn btn--tiny" id="console-clear">очистить</button>
+      </div>
+      <div class="console__body" id="console-body"></div>
+    </aside>
+  </main>
+
+  <div class="toasts" id="toasts"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
